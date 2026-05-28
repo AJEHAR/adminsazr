@@ -147,8 +147,31 @@ function gasCall(fn) {
     var _sh = null;  // successHandler
     var _fh = null;  // failureHandler
 
+    // ── Property khas JavaScript/Promise — MESTI diabaikan ─────
+    //  Punca bug "Maximum call stack exceeded":
+    //  Promise.resolve() semak .then pada setiap objek untuk
+    //  detect "thenable". Kalau Proxy balas .then → ia anggap
+    //  Proxy adalah Promise → semak .then lagi → gelungan infiniti.
+    //  Penyelesaian: return undefined untuk semua property khas.
+    var _SKIP = {
+      'then': true, 'catch': true, 'finally': true,
+      'toString': true, 'valueOf': true, 'toJSON': true,
+      'constructor': true, 'prototype': true, '__proto__': true,
+      'hasOwnProperty': true, 'isPrototypeOf': true,
+      'propertyIsEnumerable': true, 'toLocaleString': true,
+      'call': true, 'apply': true, 'bind': true,
+      'length': true, 'name': true, 'arguments': true, 'caller': true,
+      'Symbol(Symbol.toPrimitive)': true,
+      'Symbol(Symbol.iterator)': true,
+      'Symbol(Symbol.toStringTag)': true
+    };
+
     var handler = {
       get: function(target, prop) {
+
+        // Abaikan Symbol dan property khas — elak gelungan Promise
+        if (typeof prop !== 'string') return undefined;
+        if (_SKIP[prop]) return undefined;
 
         // .withSuccessHandler(fn)
         if (prop === 'withSuccessHandler') {
@@ -166,38 +189,39 @@ function gasCall(fn) {
           };
         }
 
-        // .namaFungsi(...) — mana-mana fungsi lain
+        // .namaFungsi(...) — fungsi GAS sebenar
         return function() {
           var fnArgs  = Array.prototype.slice.call(arguments);
           var sh      = _sh;
           var fh      = _fh;
           var fnName  = prop;
 
-          // Reset handlers untuk panggilan seterusnya
+          // Reset handlers — penting untuk panggilan seterusnya
           _sh = null;
           _fh = null;
 
-          // Bina args array: [arg1, arg2, ...]
-          var callArgs = [fnName].concat(fnArgs);
-
-          gasCall.apply(null, callArgs)
-            .then(function(result) {
-              if (typeof sh === 'function') {
-                try { sh(result); } catch(e) {
-                  console.error('[GAS shim] successHandler error:', e);
+          // Panggil GAS secara async — guna setTimeout untuk
+          // elak sebarang recursion synchronous
+          setTimeout(function() {
+            var callArgs = [fnName].concat(fnArgs);
+            gasCall.apply(null, callArgs)
+              .then(function(result) {
+                if (typeof sh === 'function') {
+                  try { sh(result); } catch(e) {
+                    console.error('[GAS shim] successHandler error:', e);
+                  }
                 }
-              }
-            })
-            .catch(function(err) {
-              if (typeof fh === 'function') {
-                try { fh(err); } catch(e) {
-                  console.error('[GAS shim] failureHandler error:', e);
+              })
+              .catch(function(err) {
+                if (typeof fh === 'function') {
+                  try { fh(err); } catch(e) {
+                    console.error('[GAS shim] failureHandler error:', e);
+                  }
+                } else {
+                  console.error('[GAS] Ralat tanpa failureHandler:', fnName, err.message);
                 }
-              } else {
-                // Tiada failureHandler — log ke console
-                console.error('[GAS] Ralat tanpa failureHandler:', fnName, err.message);
-              }
-            });
+              });
+          }, 0);
         };
       }
     };
