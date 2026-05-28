@@ -83,7 +83,9 @@ function _gasApiPost(fn) {
 
   var fetchOptions = {
     method : 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // text/plain → 'simple request' → tiada CORS preflight
+    // GAS baca e.postData.contents sama sahaja
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body   : body
   };
   if (controller) {
