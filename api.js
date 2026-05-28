@@ -54,7 +54,7 @@ var GAS_DEBUG = true;  // ← Tukar ke false selepas selesai debug
 //    atau reject dengan Error jika gagal.
 // ============================================================
 
-function gasCall(fn) {
+function _gasApiPost(fn) {
   var args = Array.prototype.slice.call(arguments, 1);
 
   if (GAS_DEBUG) {
@@ -207,20 +207,20 @@ function gasCall(fn) {
             // ── Defensive: pastikan gasCall sentiasa pulangkan Promise ──
             var promise;
             try {
-              promise = gasCall.apply(null, callArgs);
+              promise = _gasApiPost.apply(null, callArgs);
             } catch(syncErr) {
               // gasCall lempar error synchronous
               if (typeof fh === 'function') {
                 try { fh(syncErr); } catch(e) {}
               } else {
-                console.error('[GAS] Sync error dalam gasCall:', fnName, syncErr);
+                console.error('[GAS] Sync error dalam _gasApiPost:', fnName, syncErr);
               }
               return;
             }
 
             // Jika gasCall pulangkan undefined atau bukan Promise
             if (!promise || typeof promise.then !== 'function') {
-              console.error('[GAS] gasCall tidak pulangkan Promise untuk:', fnName, '| Dapat:', typeof promise);
+              console.error('[GAS] _gasApiPost tidak pulangkan Promise untuk:', fnName, '| Dapat:', typeof promise);
               // Bungkus dalam Promise supaya chain tidak pecah
               promise = Promise.resolve(promise);
             }
@@ -337,7 +337,7 @@ function gasCallAuth(fn) {
   var extraArgs = Array.prototype.slice.call(arguments, 1);
   var token     = (typeof getToken === 'function') ? getToken() : _gasGetToken();
   var allArgs   = [fn, token].concat(extraArgs);
-  return gasCall.apply(null, allArgs);
+  return _gasApiPost.apply(null, allArgs);
 }
 
 
@@ -355,7 +355,7 @@ function gasCallAuth(fn) {
 
 function gasCallJson(fn) {
   var args = Array.prototype.slice.call(arguments);
-  return gasCall.apply(null, args)
+  return _gasApiPost.apply(null, args)
     .then(function(result) {
       if (result && result.status === 'ERROR') {
         throw new Error(result.mesej || 'Ralat GAS');
@@ -399,6 +399,12 @@ if (typeof Proxy === 'undefined') {
 // ============================================================
 //  BAHAGIAN 8 — VERSI & METADATA
 // ============================================================
+
+// ── Wrapper awam: gasCall() untuk HTML yang panggil terus ──────
+//  Nota: index.html ada gasCall(btnId, gasFn, args, onSuccess, onFail)
+//  sendiri. Fungsi ini (_gasApiPost) adalah teras yang berbeza.
+//  Jika ada HTML lain perlu panggil terus tanpa button:
+//    _gasApiPost('fungsiGAS', arg1, arg2) → Promise
 
 var SAZR_API = {
   versi    : '2.0.0',
