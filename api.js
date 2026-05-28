@@ -32,7 +32,7 @@ var GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbyj7zDpk7IO7WkvKuj1Z
 var GAS_TIMEOUT_MS = 30000;
 
 // Debug mode — tukar ke true untuk log semua request/response
-var GAS_DEBUG = false;
+var GAS_DEBUG = true;  // ← Tukar ke false selepas selesai debug
 
 
 // ============================================================
@@ -200,25 +200,46 @@ function gasCall(fn) {
           _sh = null;
           _fh = null;
 
-          // Panggil GAS secara async — guna setTimeout untuk
-          // elak sebarang recursion synchronous
+          // Panggil GAS secara async — setTimeout elak recursion synchronous
           setTimeout(function() {
             var callArgs = [fnName].concat(fnArgs);
-            gasCall.apply(null, callArgs)
+
+            // ── Defensive: pastikan gasCall sentiasa pulangkan Promise ──
+            var promise;
+            try {
+              promise = gasCall.apply(null, callArgs);
+            } catch(syncErr) {
+              // gasCall lempar error synchronous
+              if (typeof fh === 'function') {
+                try { fh(syncErr); } catch(e) {}
+              } else {
+                console.error('[GAS] Sync error dalam gasCall:', fnName, syncErr);
+              }
+              return;
+            }
+
+            // Jika gasCall pulangkan undefined atau bukan Promise
+            if (!promise || typeof promise.then !== 'function') {
+              console.error('[GAS] gasCall tidak pulangkan Promise untuk:', fnName, '| Dapat:', typeof promise);
+              // Bungkus dalam Promise supaya chain tidak pecah
+              promise = Promise.resolve(promise);
+            }
+
+            promise
               .then(function(result) {
                 if (typeof sh === 'function') {
                   try { sh(result); } catch(e) {
-                    console.error('[GAS shim] successHandler error:', e);
+                    console.error('[GAS shim] successHandler error:', fnName, e);
                   }
                 }
               })
               .catch(function(err) {
                 if (typeof fh === 'function') {
                   try { fh(err); } catch(e) {
-                    console.error('[GAS shim] failureHandler error:', e);
+                    console.error('[GAS shim] failureHandler error:', fnName, e);
                   }
                 } else {
-                  console.error('[GAS] Ralat tanpa failureHandler:', fnName, err.message);
+                  console.error('[GAS] Ralat tanpa failureHandler:', fnName, err.message || err);
                 }
               });
           }, 0);
